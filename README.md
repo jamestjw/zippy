@@ -1,7 +1,9 @@
 # Zippy
 
-Terminal speed reader that plays text one word at a time, keeping a
-highlighted pivot letter centered.
+Terminal speed reader that plays text one word at a time, keeping a highlighted
+pivot letter centered. Keeping the word in a fixed spot reduces eye movement,
+which can help increase reading speed. Even if you do not consciously register
+every word, your brain can often infer meaning from context.
 
 ![zippy](https://github.com/jamestjw/zippy/raw/main/zippy.gif)
 
