@@ -67,6 +67,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.idx--
 			}
 			return m, nil
+		case "r":
+			m.idx = 0
+			if m.running {
+				return m, tickCmd(m.wordInterval())
+			}
+			return m, nil
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -104,7 +110,7 @@ func (m model) View() string {
 	block := formatWord(word, m.width)
 	body := lipgloss.Place(m.width, contentHeight, lipgloss.Left, lipgloss.Center, block)
 
-	status := fmt.Sprintf("WPM %d  %d/%d  space: play/pause  +/-: speed  h/l: back/forward  q: quit", m.wpm, m.idx+1, len(m.words))
+	status := fmt.Sprintf("WPM %d  %d/%d  space: play/pause  +/-: speed  h/l: back/forward  r: restart  q: quit", m.wpm, m.idx+1, len(m.words))
 	statusLine := lipgloss.NewStyle().Foreground(lipgloss.Color(statusGray)).Render(truncate(status, m.width))
 
 	if contentHeight < m.height {

@@ -22,6 +22,7 @@ If you prefer, `-wpm` is an alias for `-start-wpm`.
 - space: play/pause
 - + / - or up/down: speed up/down
 - h/l or left/right: step back/forward
+- r: restart
 - q: quit
 
 ## Notes
