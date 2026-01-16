@@ -3,6 +3,8 @@
 Terminal speed reader that plays text one word at a time, keeping a
 highlighted pivot letter centered.
 
+![zippy](https://github.com/jamestjw/zippy/raw/main/zippy.gif)
+
 ## Quick start
 
 ```bash
