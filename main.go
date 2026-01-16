@@ -28,21 +28,30 @@ type tokenMsg struct {
 }
 
 type model struct {
-	words       []string
-	idx         int
-	running     bool
-	wpm         int
-	width       int
-	height      int
-	streamDone  bool
-	streamErr   error
-	tokenizer   *tokenizer
-	inputCloser io.Closer
+	words          []string
+	idx            int
+	running        bool
+	wpm            int
+	width          int
+	height         int
+	streamDone     bool
+	streamErr      error
+	tokenizer      *tokenizer
+	inputCloser    io.Closer
+	lazy           bool
+	waitingToken   bool
+	pendingAdvance bool
+	hasCurrent     bool
+	currentWord    string
+	filePath       string
 }
 
 func (m model) Init() tea.Cmd {
 	if m.tokenizer == nil {
 		return nil
+	}
+	if m.lazy {
+		return m.requestToken(true)
 	}
 	return tokenizeCmd(m.tokenizer)
 }
@@ -72,16 +81,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "right", "l":
+			if m.lazy {
+				return m, nil
+			}
 			if m.idx < len(m.words)-1 {
 				m.idx++
 			}
 			return m, nil
 		case "left", "h":
+			if m.lazy {
+				return m, nil
+			}
 			if m.idx > 0 {
 				m.idx--
 			}
 			return m, nil
 		case "r":
+			// Restart is only available for file input; stdin cannot be replayed.
+			if m.filePath == "" {
+				return m, nil
+			}
+			if m.lazy {
+				return m, m.restartStream()
+			}
 			m.idx = 0
 			if m.running {
 				return m, tickCmd(m.wordInterval())
@@ -96,6 +118,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.running {
 			return m, nil
 		}
+		if m.lazy {
+			if m.streamDone {
+				m.running = false
+				return m, nil
+			}
+			return m, m.requestToken(true)
+		}
 		if m.idx < len(m.words)-1 {
 			m.idx++
 			return m, tickCmd(m.wordInterval())
@@ -106,6 +135,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tickCmd(m.wordInterval())
 	case tokenMsg:
+		if m.lazy {
+			return m.handleLazyToken(msg)
+		}
 		if msg.err != nil {
 			m.streamErr = msg.err
 			m.streamDone = true
@@ -132,10 +164,17 @@ func (m model) View() string {
 	if m.streamErr != nil {
 		return fmt.Sprintf("Error: %v", m.streamErr)
 	}
-	if len(m.words) == 0 && m.streamDone {
+	if m.lazy {
+		if !m.hasCurrent && m.streamDone {
+			return "No words to display."
+		}
+		if !m.hasCurrent {
+			return "Loading..."
+		}
+	} else if len(m.words) == 0 && m.streamDone {
 		return "No words to display."
 	}
-	if len(m.words) == 0 {
+	if !m.lazy && len(m.words) == 0 {
 		return "Loading..."
 	}
 	if m.width == 0 || m.height == 0 {
@@ -147,15 +186,29 @@ func (m model) View() string {
 		contentHeight--
 	}
 
-	word := m.words[m.idx]
+	word := m.currentWord
+	if !m.lazy {
+		word = m.words[m.idx]
+	}
 	block := formatWord(word, m.width)
 	body := lipgloss.Place(m.width, contentHeight, lipgloss.Left, lipgloss.Center, block)
 
 	total := "?"
-	if m.streamDone {
+	if m.streamDone && !m.lazy {
 		total = fmt.Sprintf("%d", len(m.words))
 	}
-	status := fmt.Sprintf("WPM %d  %d/%s  space: play/pause  +/-: speed  h/l: back/forward  r: restart  q: quit", m.wpm, m.idx+1, total)
+	if m.streamDone && m.lazy {
+		total = fmt.Sprintf("%d", m.idx+1)
+	}
+	controls := "space: play/pause  +/-: speed"
+	if !m.lazy {
+		controls += "  h/l: back/forward"
+	}
+	if m.filePath != "" {
+		controls += "  r: restart"
+	}
+	controls += "  q: quit"
+	status := fmt.Sprintf("WPM %d  %d/%s  %s", m.wpm, m.idx+1, total, controls)
 	statusLine := lipgloss.NewStyle().Foreground(lipgloss.Color(statusGray)).Render(truncate(status, m.width))
 
 	if contentHeight < m.height {
@@ -175,6 +228,52 @@ func tickCmd(interval time.Duration) tea.Cmd {
 	return tea.Tick(interval, func(time.Time) tea.Msg {
 		return tickMsg{}
 	})
+}
+
+func (m *model) requestToken(advance bool) tea.Cmd {
+	if m.waitingToken || m.tokenizer == nil {
+		return nil
+	}
+	m.pendingAdvance = advance
+	m.waitingToken = true
+	return tokenizeCmd(m.tokenizer)
+}
+
+func (m *model) handleLazyToken(msg tokenMsg) (tea.Model, tea.Cmd) {
+	m.waitingToken = false
+	if msg.err != nil {
+		m.streamErr = msg.err
+		m.streamDone = true
+		return m, nil
+	}
+	if msg.word == "" && msg.done {
+		m.streamDone = true
+		m.closeInput()
+		if m.running {
+			m.running = false
+		}
+		return m, nil
+	}
+	if msg.word != "" {
+		if m.pendingAdvance {
+			m.idx++
+		}
+		m.pendingAdvance = false
+		m.hasCurrent = true
+		m.currentWord = msg.word
+		if msg.done {
+			m.streamDone = true
+			m.closeInput()
+		}
+		if m.running {
+			return m, tickCmd(m.wordInterval())
+		}
+	}
+	if msg.done {
+		m.streamDone = true
+		m.closeInput()
+	}
+	return m, nil
 }
 
 type tokenizer struct {
@@ -296,6 +395,13 @@ func truncate(s string, width int) string {
 	return string(runes[:width])
 }
 
+func (m *model) closeInput() {
+	if m.inputCloser != nil {
+		_ = m.inputCloser.Close()
+		m.inputCloser = nil
+	}
+}
+
 func openInput(filePath string) (io.ReadCloser, error) {
 	if filePath != "" {
 		file, err := os.Open(filePath)
@@ -318,15 +424,37 @@ func openInput(filePath string) (io.ReadCloser, error) {
 	return io.NopCloser(os.Stdin), nil
 }
 
+func (m *model) restartStream() tea.Cmd {
+	m.streamErr = nil
+	m.streamDone = false
+	m.waitingToken = false
+	m.pendingAdvance = false
+	m.hasCurrent = false
+	m.currentWord = ""
+	m.idx = -1
+	m.closeInput()
+	reader, err := openInput(m.filePath)
+	if err != nil {
+		m.streamErr = err
+		m.streamDone = true
+		return nil
+	}
+	m.inputCloser = reader
+	m.tokenizer = newTokenizer(reader)
+	return m.requestToken(true)
+}
+
 func main() {
 	var (
 		startWPM int
 		wpm      int
 		file     string
+		lazy     bool
 	)
 	flag.IntVar(&startWPM, "start-wpm", 500, "starting words per minute")
 	flag.IntVar(&wpm, "wpm", 0, "alias for -start-wpm")
 	flag.StringVar(&file, "file", "", "path to input text")
+	flag.BoolVar(&lazy, "lazy", false, "stream tokens lazily without buffering; disables back/forward")
 	flag.Parse()
 
 	if wpm > 0 {
@@ -340,10 +468,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	startIdx := 0
+	if lazy {
+		startIdx = -1
+	}
 	p := tea.NewProgram(model{
 		wpm:         startWPM,
 		tokenizer:   newTokenizer(reader),
 		inputCloser: reader,
+		lazy:        lazy,
+		idx:         startIdx,
+		filePath:    file,
 	})
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)

@@ -16,13 +16,14 @@ go run . -file /path/to/text.txt -start-wpm 350
 ```
 
 If you prefer, `-wpm` is an alias for `-start-wpm`.
+Use `-lazy` to stream tokens without buffering the whole input (disables back/forward).
 
 ## Controls
 
 - space: play/pause
 - + / - or up/down: speed up/down
 - h/l or left/right: step back/forward
-- r: restart
+- r: restart (file input only)
 - q: quit
 
 ## Notes
@@ -30,3 +31,4 @@ If you prefer, `-wpm` is an alias for `-start-wpm`.
 - Punctuation is kept attached to words so commas/periods stay with the word as
 it flashes.
 - The terminal controls actual font size. Zippy does not change it.
+- In `-lazy` mode, back/forward is disabled and the total word count is unknown until the stream ends.
