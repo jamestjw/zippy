@@ -13,6 +13,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const (
+	statusGray = "#777777"
+	pivotRed   = "#FF3B30"
+)
+
 type tickMsg struct{}
 
 type model struct {
@@ -22,8 +27,6 @@ type model struct {
 	wpm     int
 	width   int
 	height  int
-	gap     int
-	repeat  int
 }
 
 func (m model) Init() tea.Cmd {
@@ -98,11 +101,11 @@ func (m model) View() string {
 	}
 
 	word := m.words[m.idx]
-	block := formatWord(word, m.width, m.gap, m.repeat)
+	block := formatWord(word, m.width)
 	body := lipgloss.Place(m.width, contentHeight, lipgloss.Left, lipgloss.Center, block)
 
 	status := fmt.Sprintf("WPM %d  %d/%d  space: play/pause  +/-: speed  h/l: back/forward  q: quit", m.wpm, m.idx+1, len(m.words))
-	statusLine := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render(truncate(status, m.width))
+	statusLine := lipgloss.NewStyle().Foreground(lipgloss.Color(statusGray)).Render(truncate(status, m.width))
 
 	if contentHeight < m.height {
 		return body + "\n" + statusLine
@@ -133,7 +136,7 @@ func (m *model) adjustWPM(delta int) {
 	}
 }
 
-func formatWord(word string, width, gap, repeat int) string {
+func formatWord(word string, width int) string {
 	if width <= 0 {
 		return word
 	}
@@ -151,37 +154,17 @@ func formatWord(word string, width, gap, repeat int) string {
 	pivotRune := string(runes[pivot])
 	rightRunes := runes[pivot+1:]
 
-	pivotStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
-	gapStr := strings.Repeat(" ", gap)
+	pivotStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(pivotRed)).Bold(true)
 
-	left := joinWithGap(leftRunes, gapStr)
-	right := joinWithGap(rightRunes, gapStr)
-	leftGap := ""
-	rightGap := ""
-	if len(leftRunes) > 0 {
-		leftGap = gapStr
-	}
-	if len(rightRunes) > 0 {
-		rightGap = gapStr
-	}
+	left := string(leftRunes)
+	right := string(rightRunes)
 
 	center := width / 2
-	leftWidth := lipgloss.Width(left) + lipgloss.Width(leftGap)
-	leftPad := center - leftWidth
-	if leftPad < 0 {
-		leftPad = 0
-	}
+	leftPad := max(center-lipgloss.Width(left), 0)
 
 	padding := strings.Repeat(" ", leftPad)
-	line := padding + left + leftGap + pivotStyle.Render(pivotRune) + rightGap + right
-	if repeat <= 1 {
-		return line
-	}
-	lines := make([]string, repeat)
-	for i := 0; i < repeat; i++ {
-		lines[i] = line
-	}
-	return strings.Join(lines, "\n")
+	line := padding + left + pivotStyle.Render(pivotRune) + right
+	return line
 }
 
 func pivotIndex(length int) int {
@@ -213,20 +196,6 @@ func truncate(s string, width int) string {
 	return string(runes[:width])
 }
 
-func joinWithGap(runes []rune, gap string) string {
-	if len(runes) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	for i, r := range runes {
-		if i > 0 {
-			b.WriteString(gap)
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
-}
-
 func readInput(filePath string) (string, error) {
 	if filePath != "" {
 		data, err := os.ReadFile(filePath)
@@ -240,13 +209,17 @@ func readInput(filePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	// If stdin is a terminal (not a pipe/file), treat it as "no input provided".
 	if info.Mode()&os.ModeCharDevice != 0 {
 		return "", fmt.Errorf("no input provided")
 	}
+
 	data, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return "", err
 	}
+
 	return string(data), nil
 }
 
@@ -298,10 +271,8 @@ func main() {
 	}
 
 	p := tea.NewProgram(model{
-		words:  words,
-		wpm:    startWPM,
-		gap:    2,
-		repeat: 1,
+		words: words,
+		wpm:   startWPM,
 	})
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)

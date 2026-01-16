@@ -1,6 +1,7 @@
 # Zippy
 
-Terminal speed reader that plays text one word at a time, keeping a highlighted pivot letter centered.
+Terminal speed reader that plays text one word at a time, keeping a
+highlighted pivot letter centered.
 
 ## Quick start
 
@@ -27,5 +28,4 @@ If you prefer, `-wpm` is an alias for `-start-wpm`.
 
 - Punctuation is kept attached to words so commas/periods stay with the word as
 it flashes.
-- The terminal controls actual font size; Zippy increases perceived size by
-adding letter spacing and vertical repetition.
+- The terminal controls actual font size. Zippy does not change it.
