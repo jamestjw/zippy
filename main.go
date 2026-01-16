@@ -251,19 +251,24 @@ func truncate(s string, width int) string {
 
 func main() {
 	var (
-		startWPM int
-		wpm      int
-		file     string
-		lazy     bool
+		wpm  int
+		file string
+		lazy bool
 	)
-	flag.IntVar(&startWPM, "start-wpm", 500, "starting words per minute")
-	flag.IntVar(&wpm, "wpm", 0, "alias for -start-wpm")
+	flag.IntVar(&wpm, "wpm", 500, "starting words per minute")
 	flag.StringVar(&file, "file", "", "path to input text")
 	flag.BoolVar(&lazy, "lazy", false, "stream tokens lazily without buffering; disables back/forward")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
+		fmt.Fprintln(os.Stderr, "Input can be provided via -file or by piping text into stdin.")
+		fmt.Fprintln(os.Stderr)
+		flag.PrintDefaults()
+	}
 	flag.Parse()
-
-	if wpm > 0 {
-		startWPM = wpm
+	if wpm <= 0 {
+		fmt.Fprintln(os.Stderr, "WPM must be greater than 0.")
+		flag.PrintDefaults()
+		os.Exit(1)
 	}
 
 	stream, err := buildStream(lazy, file)
@@ -276,7 +281,7 @@ func main() {
 	}
 
 	p := tea.NewProgram(model{
-		wpm:    startWPM,
+		wpm:    wpm,
 		stream: stream,
 	})
 	if _, err := p.Run(); err != nil {

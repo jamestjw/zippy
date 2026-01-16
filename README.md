@@ -12,16 +12,16 @@ echo "The quick brown fox jumps over the lazy dog." | go run .
 ## Usage
 
 ```bash
-go run . -file /path/to/text.txt -start-wpm 350
+go run . -file /path/to/text.txt -wpm 350
 ```
 
-If you prefer, `-wpm` is an alias for `-start-wpm`.
 Use `-lazy` to stream tokens without buffering the whole input (disables back/forward).
+You can also provide input via stdin by piping text into the program.
 
 ## Controls
 
 - space: play/pause
-- + / - or up/down: speed up/down
+- \+ / - or up/down: speed up/down
 - h/l or left/right: step back/forward
 - r: restart (file input only)
 - q: quit
